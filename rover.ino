@@ -10,6 +10,8 @@
 #define E_SERIAL_IDLE -2
 #define E_SERIAL_INVALID_COMMAND -3
 #define E_VOLTAGE_MEASURE_ERROR -4 
+#define E_SERVO_POSIOTIONING_FAILURE -5
+#define E_SERIAL_INVALID_RQ_ID -6
 
 #define SC_HEALTHCHECK 0
 #define SC_SERVO_POSITION 1
@@ -56,15 +58,16 @@ int motorIn1A = 6;
 int motorIn2A = 7;
 
 int voltageInput = A2;
-double voltageValue = 0.0;
-double VOLTAGE_CONST = 0.01563; // for 22KOhm/10KOhm
-/* double VOLTAGE_CONST = 0.011842; // for 10KOhm/6.8KOhm */
+float voltageValue = 0.0;
+float VOLTAGE_CONST = 0.01563; // for 22KOhm/10KOhm
+/* float VOLTAGE_CONST = 0.011842; // for 10KOhm/6.8KOhm */
 
-long lastActionTime;
+float lastActionTime;
 
 int setMotorSpeed(int speedTarget)
 {
     int NEUTRAL = MOTOR_VALUE_NEUTRAL;
+    motorSpeedTarget = speedTarget;
 
     if(speedTarget < MOTOR_VALUE_MIN || speedTarget > MOTOR_VALUE_MAX)
     {
@@ -94,7 +97,7 @@ int setMotorSpeed(int speedTarget)
         digitalWrite(motorEnablePin, LOW);
     }
 
-    return speedTarget;
+    return STATUS_OK;
 }
 
 int setServoPossition(int servoTarget)
@@ -154,15 +157,16 @@ int possitionServo()
 
 
 //voltage measurment
-double measureVoltage()
+float measureVoltage()
 {
-    double v_sum = 0.0;
+    float v_sum = 0.0;
 
     for(int i=0; i < 10; i++)
     {
         voltageValue = VOLTAGE_CONST * analogRead(voltageInput);
         v_sum += voltageValue;
     }
+
     return v_sum / 10;
 }
 
@@ -177,19 +181,25 @@ int resetSerial()
     return STATUS_OK;
 }
 
-int sendSerialResponse(int requestID, int status, double value)
+int sendSerialResponse(int requestID, int status, String value)
 {
-    Serial.print(requestID);
-    Serial.print(':');
-    Serial.print(status);
-    Serial.print(':');
-    Serial.println(value);
+    String serialOutput;
+    
+    serialOutput = String(requestID, DEC);// + ":" + String(status, DEC) + ":" + value;
+    serialOutput += ":" + String(status, DEC) + ":" + value;
+
+    Serial.println(serialOutput);
+
+    return STATUS_OK;
 }
 
 int processSerial()
 {
     int status = STATUS_OK;
-    double value = 0.0;
+    String result = "0";
+    float value = 0.0;
+    char buffer[10];
+    String s_value;
 
     if( Serial.available())
     {
@@ -205,15 +215,23 @@ int processSerial()
         }
         else if (ch == '\r')
         {
-            if(fieldIndex + 1 != SERIAL_FIELDS_COUNT || serial_values[SERIAL_REQUEST_ID] == 0)
+            if(fieldIndex + 1 != SERIAL_FIELDS_COUNT)
             {
                 status = E_SERIAL_INVALID_REQUEST;
-                sendSerialResponse(-1, status, value);
+                sendSerialResponse(-1, status, String(requestID, DEC));
                 resetSerial();
 
                 return status;
             }
 
+            if(serial_values[SERIAL_REQUEST_ID] < 0 || serial_values[SERIAL_REQUEST_ID] == 0)
+            {
+                status = E_SERIAL_INVALID_RQ_ID;
+                sendSerialResponse(-1, status, String(requestID, DEC));
+                resetSerial();
+
+                return status;
+            }
             requestID = serial_values[SERIAL_REQUEST_ID];
 
             lastActionTime = millis();
@@ -224,9 +242,11 @@ int processSerial()
                     value = measureVoltage();
                     if(value < 0)
                     {
-                        value = 0;
-                        status = E_VOLTAGE_MEASURE_ERROR;
+                        status = (int) value;
+                        break;
                     }
+                    result = dtostrf(value, 4, 2, buffer);
+                    result += "," + String(servoPosTarget, DEC) + "," + String(motorSpeedTarget, DEC);
                     break;
 
                 case SC_SERVO_POSITION:
@@ -234,7 +254,7 @@ int processSerial()
                     break;
 
                 case SC_MOTOR_SPEED:
-                    setMotorSpeed(serial_values[SERIAL_VALUE_FIELD]);
+                    status = setMotorSpeed(serial_values[SERIAL_VALUE_FIELD]);
                     break;
 
                 default:
@@ -245,11 +265,11 @@ int processSerial()
             //send response
             if(status == STATUS_OK)
             {
-                sendSerialResponse(requestID, status, value);
+                sendSerialResponse(requestID, status, result);
             }
             else
             {
-                sendSerialResponse(-1, status, value);
+                sendSerialResponse(requestID, status, result);
             }
 
             resetSerial();
@@ -261,7 +281,7 @@ int processSerial()
         else
         {
             status = E_SERIAL_INVALID_REQUEST;
-            sendSerialResponse(-1, status, value);
+            sendSerialResponse(-1, status, String(requestID, DEC));
             resetSerial();
             return status;
         }
@@ -302,7 +322,7 @@ void loop()
         lastActionTime = millis();
 
         //send error communicate
-        sendSerialResponse(-1, E_SERIAL_IDLE, 0);
+        sendSerialResponse(-1, E_SERIAL_IDLE, String(requestID, DEC));
     }
     //precaution against going back to zero the millis() result
     if(lastActionTime > millis()) lastActionTime = millis();
@@ -310,4 +330,8 @@ void loop()
     status = processSerial();
     
     status = possitionServo();
+    if(status != STATUS_OK)
+    {
+        sendSerialResponse(-1, E_SERVO_POSIOTIONING_FAILURE, String(requestID, DEC));
+    }
 }
