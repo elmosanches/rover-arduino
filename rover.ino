@@ -12,6 +12,7 @@
 #define E_VOLTAGE_MEASURE_ERROR -4 
 #define E_SERVO_POSIOTIONING_FAILURE -5
 #define E_SERIAL_INVALID_RQ_ID -6
+#define E_SERIAL_VOLTAGE_LOW -7
 
 #define SC_HEALTHCHECK 0
 #define SC_SERVO_POSITION 1
@@ -33,6 +34,9 @@
 #define E_MOTOR_INVALID_SPEED -20
 
 #define MAX_IDLE_TIME 1000
+
+#define HK_CHECK_ACTION 0
+#define HK_STOP_ACTION 1
 
 
 int requestID = 0;
@@ -239,6 +243,11 @@ int processSerial()
             switch(serial_values[SERIAL_COMMAND_FIELD])
             {
                 case SC_HEALTHCHECK:
+                    //stop motor on request
+                    if(serial_values[SERIAL_VALUE_FIELD] == HK_STOP_ACTION)
+                    {
+                        setMotorSpeed(MOTOR_VALUE_NEUTRAL);
+                    }
                     value = measureVoltage();
                     if(value < 0)
                     {

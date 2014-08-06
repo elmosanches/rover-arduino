@@ -1,5 +1,5 @@
 # Philosophy
-Communication with arduino is realised through SerialPort. Request formated according to specifiaction is sent to arudino and from arduino is supposed to come back response with status of the device.
+Communication with arduino is realised by SerialPort. A request formated according to the specifiaction is sent to arudino and arduino sends back a response with status of the device.
 
 ## REQUEST:
 
@@ -10,7 +10,8 @@ A request consists of 3 fields separated with ':'
 Available commands:
 
 00 - healthcheck
-    value: 0
+    value: 0 - check voltage
+    value: 1 - stop motors
 
     result: \<vlotage\>,\<servo_target\>,\<motor_speed_target\>
 
@@ -38,7 +39,7 @@ Status:
 
 -1: Invalid request
 
--2: operating suspended (due to no request withing required time - usualy 1s)
+-2: idle timeout - operating suspended (due to no request withing required time - usualy 1s)
 
 -3: Invalid command
 
@@ -47,6 +48,8 @@ Status:
 -5: Positioning servo feilure
 
 -6: Invalid request id
+
+-7: Voltage too low - operating suspended
 
 -10: invalid servo position target
 
