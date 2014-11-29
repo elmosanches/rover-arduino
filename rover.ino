@@ -21,9 +21,7 @@
 
 #define SERVO_VALUE_MIN 0
 #define SERVO_VALUE_MAX 1024
-#define SERVO_TARGET_OFFSET 10
-#define SERVO_SLOW_SPEED 50
-#define SERVO_MAX_DELTA 150
+#define SERVO_POSITION_PIN 9
 
 #define E_SERVO_WRONG_POSITION -10
 
@@ -39,21 +37,21 @@
 #define HK_STOP_ACTION 1
 
 
+/*
+TODO
+convert to three way servo
+*/
+#include <Servo.h> 
+
+
 int requestID = 0;
 
 
 int fieldIndex = 0;               // the current field being received
 int serial_values[SERIAL_FIELDS_COUNT];  // array holding values for all the fields
 
-int servoPosPin = A0;
-int servoPosValue = 0;
-
-int servoPosTarget = 0;
-
-int servoEnablePin = 10;
-int servoIn1A = 4;
-int servoIn2A = 5;
-int servoDelta = 0;
+int servoPosValue = 90;
+Servo myservo;
 
 int motorSpeedTarget = 10;
 
@@ -110,55 +108,12 @@ int setServoPossition(int servoTarget)
     {
         return E_SERVO_WRONG_POSITION;
     }
+    servoPosValue = map(servoTarget, 0, 1023, 0, 179);
 
-    //setting new servo target
-    servoPosTarget = servoTarget;
+    myservo.write(servoPosValue);
 
     return STATUS_OK;
 }
-
-int possitionServo()
-{
-    servoPosValue = analogRead(servoPosPin);
-
-    if(servoPosTarget < servoPosValue - SERVO_TARGET_OFFSET)
-    {
-        digitalWrite(servoIn1A, HIGH);
-        digitalWrite(servoIn2A, LOW);
-
-        servoDelta = servoPosValue - servoPosTarget;
-        if(servoDelta < SERVO_MAX_DELTA)
-        {
-            analogWrite(servoEnablePin, SERVO_SLOW_SPEED);
-        }
-        else
-        {
-            digitalWrite(servoEnablePin, HIGH);
-        }
-    }
-    else if(servoPosTarget > servoPosValue + SERVO_TARGET_OFFSET)
-    {
-        digitalWrite(servoIn1A, LOW);
-        digitalWrite(servoIn2A, HIGH);
-
-        servoDelta =  servoPosTarget - servoPosValue;
-        if(servoDelta < SERVO_MAX_DELTA)
-        {
-            analogWrite(servoEnablePin, SERVO_SLOW_SPEED);
-        }
-        else
-        {
-            digitalWrite(servoEnablePin, HIGH);
-        }
-    }
-    else
-    {
-        digitalWrite(servoEnablePin, LOW);
-    }
-    
-    return STATUS_OK;
-}
-
 
 //voltage measurment
 float measureVoltage()
@@ -255,7 +210,7 @@ int processSerial()
                         break;
                     }
                     result = dtostrf(value, 4, 2, buffer);
-                    result += "," + String(servoPosTarget, DEC) + "," + String(motorSpeedTarget, DEC);
+                    result += "," + String(servoPosValue, DEC) + "," + String(motorSpeedTarget, DEC);
                     break;
 
                 case SC_SERVO_POSITION:
@@ -303,10 +258,8 @@ void setup()
 {
     Serial.begin(9600);
 
-    pinMode(servoEnablePin, OUTPUT);
-    pinMode(servoIn1A, OUTPUT);
-    pinMode(servoIn2A, OUTPUT);
-    digitalWrite(servoEnablePin, LOW);
+    myservo.attach(SERVO_POSITION_PIN);
+    myservo.write(servoPosValue);
 
     pinMode(motorEnablePin, OUTPUT);
     pinMode(motorIn1A, OUTPUT);
@@ -314,8 +267,6 @@ void setup()
     digitalWrite(motorEnablePin, LOW);
 
     setMotorSpeed(MOTOR_VALUE_NEUTRAL);
-
-    servoPosTarget = SERVO_VALUE_MAX / 2;
 
     lastActionTime = millis();
 }
@@ -338,7 +289,6 @@ void loop()
 
     status = processSerial();
     
-    status = possitionServo();
     if(status != STATUS_OK)
     {
         sendSerialResponse(-1, E_SERVO_POSIOTIONING_FAILURE, String(requestID, DEC));
